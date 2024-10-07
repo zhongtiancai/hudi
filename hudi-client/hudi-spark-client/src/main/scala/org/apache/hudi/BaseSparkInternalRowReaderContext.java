@@ -19,32 +19,27 @@
 
 package org.apache.hudi;
 
-import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.HoodieReaderContext;
 import org.apache.hudi.common.model.HoodieEmptyRecord;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordMerger;
 import org.apache.hudi.common.model.HoodieSparkRecord;
-import org.apache.hudi.common.util.ConfigUtils;
 import org.apache.hudi.common.util.Option;
-import org.apache.hudi.exception.HoodieException;
-import org.apache.hudi.storage.HoodieStorage;
-import org.apache.hudi.storage.HoodieStorageUtils;
-import org.apache.hudi.storage.StorageConfiguration;
 
 import org.apache.avro.Schema;
 import org.apache.spark.sql.HoodieInternalRowUtils;
 import org.apache.spark.sql.HoodieUnsafeRowUtils;
 import org.apache.spark.sql.catalyst.InternalRow;
-import org.apache.spark.sql.catalyst.expressions.UnsafeProjection;
+import org.apache.spark.sql.catalyst.expressions.UnsafeRow;
 import org.apache.spark.sql.types.StructType;
 
 import java.util.Map;
 import java.util.function.UnaryOperator;
 
+import scala.Function1;
+
 import static org.apache.hudi.common.model.HoodieRecord.RECORD_KEY_METADATA_FIELD;
-import static org.apache.hudi.common.model.HoodieRecordMerger.DEFAULT_MERGER_STRATEGY_UUID;
 import static org.apache.spark.sql.HoodieInternalRowUtils.getCachedSchema;
 
 /**
@@ -52,19 +47,10 @@ import static org.apache.spark.sql.HoodieInternalRowUtils.getCachedSchema;
  * Subclasses need to implement {@link #getFileRecordIterator} with the reader logic.
  */
 public abstract class BaseSparkInternalRowReaderContext extends HoodieReaderContext<InternalRow> {
-  @Override
-  public HoodieStorage getStorage(String path, StorageConfiguration<?> conf) {
-    return HoodieStorageUtils.getStorage(path, conf);
-  }
 
   @Override
   public HoodieRecordMerger getRecordMerger(String mergerStrategy) {
-    switch (mergerStrategy) {
-      case DEFAULT_MERGER_STRATEGY_UUID:
-        return new HoodieSparkRecordMerger();
-      default:
-        throw new HoodieException("The merger strategy UUID is not supported: " + mergerStrategy);
-    }
+    return HoodieSparkRecordMerger.getRecordMerger(mergerStrategy);
   }
 
   @Override
@@ -75,24 +61,6 @@ public abstract class BaseSparkInternalRowReaderContext extends HoodieReaderCont
   @Override
   public String getRecordKey(InternalRow row, Schema schema) {
     return getFieldValueFromInternalRow(row, schema, RECORD_KEY_METADATA_FIELD).toString();
-  }
-
-  @Override
-  public Comparable getOrderingValue(Option<InternalRow> rowOption,
-                                     Map<String, Object> metadataMap,
-                                     Schema schema,
-                                     TypedProperties props) {
-    if (metadataMap.containsKey(INTERNAL_META_ORDERING_FIELD)) {
-      return (Comparable) metadataMap.get(INTERNAL_META_ORDERING_FIELD);
-    }
-
-    if (!rowOption.isPresent()) {
-      return 0;
-    }
-
-    String orderingFieldName = ConfigUtils.getOrderingField(props);
-    Object value = getFieldValueFromInternalRow(rowOption.get(), schema, orderingFieldName);
-    return value != null ? (Comparable) value : 0;
   }
 
   @Override
@@ -115,15 +83,6 @@ public abstract class BaseSparkInternalRowReaderContext extends HoodieReaderCont
     return internalRow.copy();
   }
 
-  @Override
-  public long extractRecordPosition(InternalRow record, Schema recordSchema, String fieldName, long providedPositionIfNeeded) {
-    Object position = getFieldValueFromInternalRow(record, recordSchema, fieldName);
-    if (position != null) {
-      return (long) position;
-    }
-    return providedPositionIfNeeded;
-  }
-
   private Object getFieldValueFromInternalRow(InternalRow row, Schema recordSchema, String fieldName) {
     StructType structType = getCachedSchema(recordSchema);
     scala.Option<HoodieUnsafeRowUtils.NestedFieldPath> cachedNestedFieldPath =
@@ -137,8 +96,14 @@ public abstract class BaseSparkInternalRowReaderContext extends HoodieReaderCont
   }
 
   @Override
-  public UnaryOperator<InternalRow> projectRecord(Schema from, Schema to) {
-    UnsafeProjection projection = HoodieInternalRowUtils.generateUnsafeProjectionAlias(getCachedSchema(from), getCachedSchema(to));
-    return projection::apply;
+  public UnaryOperator<InternalRow> projectRecord(Schema from, Schema to, Map<String, String> renamedColumns) {
+    Function1<InternalRow, UnsafeRow> unsafeRowWriter =
+        HoodieInternalRowUtils.getCachedUnsafeRowWriter(getCachedSchema(from), getCachedSchema(to), renamedColumns);
+    return row -> (InternalRow) unsafeRowWriter.apply(row);
+
+  }
+
+  protected UnaryOperator<InternalRow> getIdentityProjection() {
+    return row -> row;
   }
 }

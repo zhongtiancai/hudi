@@ -43,6 +43,7 @@ import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieException;
+import org.apache.hudi.exception.HoodieUpgradeDowngradeException;
 import org.apache.hudi.keygen.SimpleKeyGenerator;
 import org.apache.hudi.keygen.TimestampBasedKeyGenerator;
 import org.apache.hudi.keygen.constant.KeyGeneratorOptions;
@@ -172,6 +173,17 @@ public class TestUpgradeDowngrade extends HoodieClientTestBase {
   }
 
   @Test
+  public void testAutoUpgradeFailure() throws IOException {
+    Map<String, String> params = new HashMap<>();
+    addNewTableParamsToProps(params);
+    HoodieWriteConfig cfg = getConfigBuilder().withAutoUpgradeVersion(false).withProps(params).build();
+    HoodieTableMetaClient metaClient = HoodieTestUtils.init(basePath, HoodieTableType.COPY_ON_WRITE, HoodieTableVersion.SIX);
+    assertThrows(HoodieUpgradeDowngradeException.class, () ->
+        new UpgradeDowngrade(metaClient, cfg, context, SparkUpgradeDowngradeHelper.getInstance()).run(HoodieTableVersion.EIGHT, null)
+    );
+  }
+
+  @Test
   public void testLeftOverUpdatedPropFileCleanup() throws IOException {
     testUpgradeZeroToOneInternal(true, true, HoodieTableType.MERGE_ON_READ);
   }
@@ -199,16 +211,16 @@ public class TestUpgradeDowngrade extends HoodieClientTestBase {
 
     HoodieTable table = this.getHoodieTable(metaClient, cfg);
     prepForUpgradeFromZeroToOne(table);
-    HoodieInstant commitInstant = table.getPendingCommitTimeline().lastInstant().get();
+    HoodieInstant commitsInstant = table.getPendingCommitsTimeline().lastInstant().get();
 
     // delete one of the marker files in 2nd commit if need be.
     WriteMarkers writeMarkers =
-        WriteMarkersFactory.get(getConfig().getMarkersType(), table, commitInstant.getTimestamp());
+        WriteMarkersFactory.get(getConfig().getMarkersType(), table, commitsInstant.getTimestamp());
     List<String> markerPaths = new ArrayList<>(writeMarkers.allMarkerFilePaths());
     if (deletePartialMarkerFiles) {
       String toDeleteMarkerFile = markerPaths.get(0);
       table.getStorage().deleteDirectory(new StoragePath(
-          table.getMetaClient().getTempFolderPath() + "/" + commitInstant.getTimestamp()
+          table.getMetaClient().getTempFolderPath() + "/" + commitsInstant.getTimestamp()
               + "/" + toDeleteMarkerFile));
       markerPaths.remove(toDeleteMarkerFile);
     }
@@ -225,7 +237,7 @@ public class TestUpgradeDowngrade extends HoodieClientTestBase {
         .run(HoodieTableVersion.ONE, null);
 
     // assert marker files
-    assertMarkerFilesForUpgrade(table, commitInstant, firstPartitionCommit2FileSlices, secondPartitionCommit2FileSlices);
+    assertMarkerFilesForUpgrade(table, commitsInstant, firstPartitionCommit2FileSlices, secondPartitionCommit2FileSlices);
 
     // verify hoodie.table.version got upgraded
     metaClient = HoodieTableMetaClient.builder()
@@ -512,9 +524,9 @@ public class TestUpgradeDowngrade extends HoodieClientTestBase {
     HoodieTableConfig.update(metaClient.getStorage(), metaClient.getMetaPath(),
         metaClient.getTableConfig().getProps());
 
-    String metadataTablePath =
-        HoodieTableMetadata.getMetadataTableBasePath(metaClient.getBasePathV2().toString());
-    if (metaClient.getStorage().exists(new StoragePath(metadataTablePath))) {
+    StoragePath metadataTablePath =
+        HoodieTableMetadata.getMetadataTableBasePath(metaClient.getBasePath());
+    if (metaClient.getStorage().exists(metadataTablePath)) {
       HoodieTableMetaClient mdtMetaClient = HoodieTableMetaClient.builder()
           .setConf(metaClient.getStorageConf().newInstance()).setBasePath(metadataTablePath).build();
       metaClient.getTableConfig().setTableVersion(HoodieTableVersion.FOUR);
@@ -544,10 +556,10 @@ public class TestUpgradeDowngrade extends HoodieClientTestBase {
             .withMetadataIndexBloomFilter(true)
             .withEnableRecordIndex(true).build())
         .build();
-    for (MetadataPartitionType partitionType : MetadataPartitionType.values()) {
+    for (MetadataPartitionType partitionType : MetadataPartitionType.getValidValues()) {
       metaClient.getTableConfig().setMetadataPartitionState(metaClient, partitionType.getPartitionPath(), true);
     }
-    metaClient.getTableConfig().setMetadataPartitionsInflight(metaClient, MetadataPartitionType.values());
+    metaClient.getTableConfig().setMetadataPartitionsInflight(metaClient, MetadataPartitionType.getValidValues());
     String metadataTableBasePath = Paths.get(basePath, METADATA_TABLE_FOLDER_PATH).toString();
     HoodieTableMetaClient metadataTableMetaClient = HoodieTestUtils.init(metadataTableBasePath, MERGE_ON_READ);
     HoodieMetadataTestTable.of(metadataTableMetaClient)
@@ -614,15 +626,15 @@ public class TestUpgradeDowngrade extends HoodieClientTestBase {
     twoUpsertCommitDataWithTwoPartitions(firstPartitionCommit2FileSlices, secondPartitionCommit2FileSlices, cfg, client, false);
 
     HoodieTable table = this.getHoodieTable(metaClient, cfg);
-    HoodieInstant commitInstant = table.getPendingCommitTimeline().lastInstant().get();
+    HoodieInstant commitsInstant = table.getPendingCommitsTimeline().lastInstant().get();
 
     // delete one of the marker files in 2nd commit if need be.
-    WriteMarkers writeMarkers = WriteMarkersFactory.get(markerType, table, commitInstant.getTimestamp());
+    WriteMarkers writeMarkers = WriteMarkersFactory.get(markerType, table, commitsInstant.getTimestamp());
     List<String> markerPaths = new ArrayList<>(writeMarkers.allMarkerFilePaths());
     if (deletePartialMarkerFiles) {
       String toDeleteMarkerFile = markerPaths.get(0);
       table.getStorage().deleteDirectory(new StoragePath(
-          table.getMetaClient().getTempFolderPath() + "/" + commitInstant.getTimestamp()
+          table.getMetaClient().getTempFolderPath() + "/" + commitsInstant.getTimestamp()
               + "/" + toDeleteMarkerFile));
       markerPaths.remove(toDeleteMarkerFile);
     }
@@ -635,7 +647,7 @@ public class TestUpgradeDowngrade extends HoodieClientTestBase {
 
     if (fromVersion.versionCode() == HoodieTableVersion.TWO.versionCode()) {
       // assert marker files
-      assertMarkerFilesForDowngrade(table, commitInstant, toVersion == HoodieTableVersion.ONE);
+      assertMarkerFilesForDowngrade(table, commitsInstant, toVersion == HoodieTableVersion.ONE);
     }
 
     // verify hoodie.table.version got downgraded
@@ -767,7 +779,7 @@ public class TestUpgradeDowngrade extends HoodieClientTestBase {
       fullPartitionPaths[i] = String.format("%s/%s/*", basePath, dataGen.getPartitionPaths()[i]);
     }
     Dataset<Row> rows = HoodieClientTestUtils.read(
-        jsc, metaClient.getBasePath(), sqlContext, metaClient.getStorage(),
+        jsc, metaClient.getBasePath().toString(), sqlContext, metaClient.getStorage(),
         fullPartitionPaths);
     List<String> expectedRecordKeys = new ArrayList<>();
     for (HoodieRecord rec : firstBatch) {
@@ -924,8 +936,8 @@ public class TestUpgradeDowngrade extends HoodieClientTestBase {
     assertTableVersion(metaClient, expectedVersion);
 
     if (expectedVersion.versionCode() >= HoodieTableVersion.FOUR.versionCode()) {
-      String metadataTablePath = HoodieTableMetadata.getMetadataTableBasePath(metaClient.getBasePathV2().toString());
-      if (metaClient.getStorage().exists(new StoragePath(metadataTablePath))) {
+      StoragePath metadataTablePath = HoodieTableMetadata.getMetadataTableBasePath(metaClient.getBasePath());
+      if (metaClient.getStorage().exists(metadataTablePath)) {
         HoodieTableMetaClient mdtMetaClient = HoodieTableMetaClient.builder()
             .setConf(metaClient.getStorageConf().newInstance()).setBasePath(metadataTablePath).build();
         assertTableVersion(mdtMetaClient, expectedVersion);

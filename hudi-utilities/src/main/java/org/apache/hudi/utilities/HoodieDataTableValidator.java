@@ -60,6 +60,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
+ * TODO: [HUDI-8294]
  * A validator with spark-submit to ensure there are no dangling data files in the data table.
  * No data files found for commits prior to active timeline.
  * No extra data files found for completed commits more than whats present in commit metadata.
@@ -297,7 +298,6 @@ public class HoodieDataTableValidator implements Serializable {
   public void doDataTableValidation() {
     boolean finalResult = true;
     metaClient.reloadActiveTimeline();
-    String basePath = metaClient.getBasePath();
     HoodieSparkEngineContext engineContext = new HoodieSparkEngineContext(jsc);
     try {
       HoodieTableMetadata tableMetadata = new FileSystemBackedTableMetadata(
@@ -327,7 +327,7 @@ public class HoodieDataTableValidator implements Serializable {
         // Verify that for every completed commit in active timeline, there are no extra files found apart from what is present in
         // commit metadata.
         Map<String, List<String>> instantToFilesMap = RepairUtils.tagInstantsOfBaseAndLogFiles(
-            metaClient.getBasePath(), allDataFilePaths);
+            metaClient.getBasePath().toString(), allDataFilePaths);
         HoodieActiveTimeline activeTimeline = metaClient.getActiveTimeline();
         List<HoodieInstant> hoodieInstants = activeTimeline.filterCompletedInstants().getInstants();
 

@@ -19,6 +19,7 @@
 package org.apache.hudi.avro;
 
 import org.apache.hudi.common.util.Option;
+import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.exception.HoodieAvroSchemaException;
 import org.apache.hudi.exception.InvalidUnionTypeException;
 import org.apache.hudi.exception.MissingSchemaFieldException;
@@ -27,12 +28,15 @@ import org.apache.hudi.exception.SchemaCompatibilityException;
 
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaCompatibility;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiFunction;
@@ -45,7 +49,10 @@ import static org.apache.hudi.common.util.ValidationUtils.checkState;
  */
 public class AvroSchemaUtils {
 
-  private AvroSchemaUtils() {}
+  private static final Logger LOG = LoggerFactory.getLogger(AvroSchemaUtils.class);
+
+  private AvroSchemaUtils() {
+  }
 
   /**
    * See {@link #isSchemaCompatible(Schema, Schema, boolean, boolean)} doc for more details
@@ -200,6 +207,36 @@ public class AvroSchemaUtils {
     return atomicTypeEqualityPredicate.apply(sourceSchema, targetSchema);
   }
 
+  public static Option<Schema.Type> findNestedFieldType(Schema schema, String fieldName) {
+    if (StringUtils.isNullOrEmpty(fieldName)) {
+      return Option.empty();
+    }
+    String[] parts = fieldName.split("\\.");
+
+    for (String part : parts) {
+      Schema.Field foundField = resolveNullableSchema(schema).getField(part);
+      if (foundField == null) {
+        throw new HoodieAvroSchemaException(fieldName + " not a field in " + schema);
+      }
+      schema = foundField.schema();
+    }
+    return Option.of(resolveNullableSchema(schema).getType());
+  }
+
+  /**
+   * Get gets a field from a record, works on nested fields as well (if you provide the whole name, eg: toplevel.nextlevel.child)
+   * @return the field, including its lineage.
+   * For example, if you have a schema: record(a:int, b:record(x:int, y:long, z:record(z1: int, z2: float, z3: double), c:bool)
+   * "fieldName" | output
+   * ---------------------------------
+   * "a"         | a:int
+   * "b"         | b:record(x:int, y:long, z:record(z1: int, z2: int, z3: int)
+   * "c"         | c:bool
+   * "b.x"       | b:record(x:int)
+   * "b.z.z2"    | b:record(z:record(z2:float))
+   *
+   * this is intended to be used with appendFieldsToSchemaDedupNested
+   */
   public static Option<Schema.Field> findNestedField(Schema schema, String fieldName) {
     return findNestedField(schema, fieldName.split("\\."), 0);
   }
@@ -231,9 +268,20 @@ public class AvroSchemaUtils {
     if (!nestedPart.isPresent()) {
       return Option.empty();
     }
-    return nestedPart;
+    boolean isUnion = false;
+    if (foundSchema.getType().equals(Schema.Type.UNION)) {
+      isUnion = true;
+      foundSchema = resolveNullableSchema(foundSchema);
+    }
+    Schema newSchema = createNewSchemaFromFieldsWithReference(foundSchema, Collections.singletonList(nestedPart.get()));
+    return Option.of(new Schema.Field(foundField.name(), isUnion ? createNullableSchema(newSchema) : newSchema, foundField.doc(), foundField.defaultVal()));
   }
 
+  /**
+   * Adds newFields to the schema. Will add nested fields without duplicating the field
+   * For example if your schema is "a.b.{c,e}" and newfields contains "a.{b.{d,e},x.y}",
+   * It will stitch them together to be "a.{b.{c,d,e},x.y}
+   */
   public static Schema appendFieldsToSchemaDedupNested(Schema schema, List<Schema.Field> newFields) {
     return appendFieldsToSchemaBase(schema, newFields, true);
   }
@@ -253,10 +301,7 @@ public class AvroSchemaUtils {
         fields.add(new Schema.Field(f.name(), f.schema(), f.doc(), f.defaultVal()));
       }
     }
-
-    Schema newSchema = Schema.createRecord(a.getName(), a.getDoc(), a.getNamespace(), a.isError());
-    newSchema.setFields(fields);
-    return newSchema;
+    return createNewSchemaFromFieldsWithReference(a, fields);
   }
 
   /**
@@ -286,7 +331,31 @@ public class AvroSchemaUtils {
       fields.addAll(newFields);
     }
 
+    return createNewSchemaFromFieldsWithReference(schema, fields);
+  }
+
+  /**
+   * Create a new schema but maintain all meta info from the old schema
+   *
+   * @param schema schema to get the meta info from
+   * @param fields list of fields in order that will be in the new schema
+   *
+   * @return schema with fields from fields, and metadata from schema
+   */
+  public static Schema createNewSchemaFromFieldsWithReference(Schema schema, List<Schema.Field> fields) {
+    if (schema == null) {
+      throw new IllegalArgumentException("Schema must not be null");
+    }
     Schema newSchema = Schema.createRecord(schema.getName(), schema.getDoc(), schema.getNamespace(), schema.isError());
+    Map<String, Object> schemaProps = Collections.emptyMap();
+    try {
+      schemaProps = schema.getObjectProps();
+    } catch (Exception e) {
+      LOG.warn("Error while getting object properties from schema: {}", schema, e);
+    }
+    for (Map.Entry<String, Object> prop : schemaProps.entrySet()) {
+      newSchema.addProp(prop.getKey(), prop.getValue());
+    }
     newSchema.setFields(fields);
     return newSchema;
   }

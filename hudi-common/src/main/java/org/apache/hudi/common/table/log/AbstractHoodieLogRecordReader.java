@@ -252,13 +252,11 @@ public abstract class AbstractHoodieLogRecordReader {
         HoodieLogBlock logBlock = logFormatReaderWrapper.next();
         final String instantTime = logBlock.getLogBlockHeader().get(INSTANT_TIME);
         totalLogBlocks.incrementAndGet();
-        if (logBlock.getBlockType() != CORRUPT_BLOCK
-            && !HoodieTimeline.compareTimestamps(logBlock.getLogBlockHeader().get(INSTANT_TIME), HoodieTimeline.LESSER_THAN_OR_EQUALS, this.latestInstantTime
-        )) {
-          // hit a block with instant time greater than should be processed, stop processing further
-          break;
-        }
-        if (logBlock.getBlockType() != CORRUPT_BLOCK && logBlock.getBlockType() != COMMAND_BLOCK) {
+        if (logBlock.isDataOrDeleteBlock()) {
+          if (HoodieTimeline.compareTimestamps(logBlock.getLogBlockHeader().get(INSTANT_TIME), HoodieTimeline.GREATER_THAN, this.latestInstantTime)) {
+            // Skip processing a data or delete block with the instant time greater than the latest instant time used by this log record reader
+            continue;
+          }
           if (instantRange.isPresent() && !instantRange.get().isInRange(instantTime)) {
             // filter the log block by instant range
             continue;
@@ -440,10 +438,10 @@ public abstract class AbstractHoodieLogRecordReader {
           totalCorruptBlocks.incrementAndGet();
           continue;
         }
-        if (!HoodieTimeline.compareTimestamps(logBlock.getLogBlockHeader().get(INSTANT_TIME),
-            HoodieTimeline.LESSER_THAN_OR_EQUALS, this.latestInstantTime)) {
-          // hit a block with instant time greater than should be processed, stop processing further
-          break;
+        if (logBlock.isDataOrDeleteBlock()
+            && HoodieTimeline.compareTimestamps(logBlock.getLogBlockHeader().get(INSTANT_TIME), HoodieTimeline.GREATER_THAN, this.latestInstantTime)) {
+          // Skip processing a data or delete block with the instant time greater than the latest instant time used by this log record reader
+          continue;
         }
         if (logBlock.getBlockType() != COMMAND_BLOCK) {
           if (instantRange.isPresent() && !instantRange.get().isInRange(instantTime)) {
@@ -458,7 +456,7 @@ public abstract class AbstractHoodieLogRecordReader {
           case PARQUET_DATA_BLOCK:
           case DELETE_BLOCK:
             List<HoodieLogBlock> logBlocksList = instantToBlocksMap.getOrDefault(instantTime, new ArrayList<>());
-            if (logBlocksList.size() == 0) {
+            if (logBlocksList.isEmpty()) {
               // Keep a track of instant Times in the order of arrival.
               orderedInstantsList.add(instantTime);
             }
@@ -473,8 +471,7 @@ public abstract class AbstractHoodieLogRecordReader {
             // Rollback blocks contain information of instants that are failed, collect them in a set..
             if (commandBlock.getType().equals(HoodieCommandBlock.HoodieCommandBlockTypeEnum.ROLLBACK_BLOCK)) {
               totalRollbacks.incrementAndGet();
-              String targetInstantForCommandBlock =
-                  logBlock.getLogBlockHeader().get(TARGET_INSTANT_TIME);
+              String targetInstantForCommandBlock = logBlock.getLogBlockHeader().get(TARGET_INSTANT_TIME);
               targetRollbackInstants.add(targetInstantForCommandBlock);
               orderedInstantsList.remove(targetInstantForCommandBlock);
               instantToBlocksMap.remove(targetInstantForCommandBlock);
@@ -507,7 +504,7 @@ public abstract class AbstractHoodieLogRecordReader {
       for (int i = orderedInstantsList.size() - 1; i >= 0; i--) {
         String instantTime = orderedInstantsList.get(i);
         List<HoodieLogBlock> instantsBlocks = instantToBlocksMap.get(instantTime);
-        if (instantsBlocks.size() == 0) {
+        if (instantsBlocks.isEmpty()) {
           throw new HoodieException("Data corrupted while writing. Found zero blocks for an instant " + instantTime);
         }
         HoodieLogBlock firstBlock = instantsBlocks.get(0);
@@ -809,8 +806,7 @@ public abstract class AbstractHoodieLogRecordReader {
     }
 
     long currentInstantTime = Long.parseLong(dataBlock.getLogBlockHeader().get(INSTANT_TIME));
-    InternalSchema fileSchema = InternalSchemaCache.searchSchemaAndCache(currentInstantTime,
-        hoodieTableMetaClient, false);
+    InternalSchema fileSchema = InternalSchemaCache.searchSchemaAndCache(currentInstantTime, hoodieTableMetaClient);
     InternalSchema mergedInternalSchema = new InternalSchemaMerger(fileSchema, internalSchema,
         true, false).mergeSchema();
     Schema mergedAvroSchema = AvroInternalSchemaConverter.convert(mergedInternalSchema, readerSchema.getFullName());
@@ -832,6 +828,8 @@ public abstract class AbstractHoodieLogRecordReader {
     public abstract Builder withStorage(HoodieStorage storage);
 
     public abstract Builder withBasePath(String basePath);
+
+    public abstract Builder withBasePath(StoragePath basePath);
 
     public abstract Builder withLogFilePaths(List<String> logFilePaths);
 

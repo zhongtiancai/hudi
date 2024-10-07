@@ -29,8 +29,8 @@ import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.metadata.HoodieTableMetadataWriter;
-import org.apache.hudi.storage.StoragePath;
 import org.apache.hudi.storage.HoodieStorage;
+import org.apache.hudi.storage.StoragePath;
 import org.apache.hudi.table.HoodieTable;
 
 import org.apache.avro.Schema;
@@ -66,8 +66,8 @@ public class HoodieSparkWriteableTestTable extends HoodieWriteableTestTable {
   }
 
   public static HoodieSparkWriteableTestTable of(HoodieTableMetaClient metaClient, Schema schema, BloomFilter filter, Option<HoodieEngineContext> context) {
-    return new HoodieSparkWriteableTestTable(metaClient.getBasePath(),
-        metaClient.getRawHoodieStorage(),
+    return new HoodieSparkWriteableTestTable(metaClient.getBasePath().toString(),
+        metaClient.getRawStorage(),
         metaClient, schema, filter, null, context);
   }
 
@@ -78,8 +78,8 @@ public class HoodieSparkWriteableTestTable extends HoodieWriteableTestTable {
 
   public static HoodieSparkWriteableTestTable of(HoodieTableMetaClient metaClient, Schema schema, BloomFilter filter,
                                                  HoodieTableMetadataWriter metadataWriter, Option<HoodieEngineContext> context) {
-    return new HoodieSparkWriteableTestTable(metaClient.getBasePath(),
-        metaClient.getRawHoodieStorage(),
+    return new HoodieSparkWriteableTestTable(metaClient.getBasePath().toString(),
+        metaClient.getRawStorage(),
         metaClient, schema, filter, metadataWriter, context);
   }
 

@@ -24,6 +24,7 @@ import org.apache.hudi.common.config.ConfigClassProperty;
 import org.apache.hudi.common.config.ConfigGroups;
 import org.apache.hudi.common.config.HoodieConfig;
 import org.apache.hudi.common.config.HoodieMetadataConfig;
+import org.apache.hudi.common.config.HoodieReaderConfig;
 import org.apache.hudi.common.model.EventTimeAvroPayload;
 import org.apache.hudi.common.model.HoodieAvroRecordMerger;
 import org.apache.hudi.common.model.HoodieCleaningPolicy;
@@ -279,17 +280,14 @@ public class FlinkOptions extends HoodieConfig {
           + "3) Read Optimized mode (obtain latest view, based on columnar data)\n."
           + "Default: snapshot");
 
-  public static final String REALTIME_SKIP_MERGE = "skip_merge";
-  public static final String REALTIME_PAYLOAD_COMBINE = "payload_combine";
+  public static final String REALTIME_SKIP_MERGE = HoodieReaderConfig.REALTIME_SKIP_MERGE;
+  public static final String REALTIME_PAYLOAD_COMBINE = HoodieReaderConfig.REALTIME_PAYLOAD_COMBINE;
   @AdvancedConfig
   public static final ConfigOption<String> MERGE_TYPE = ConfigOptions
-      .key("hoodie.datasource.merge.type")
+      .key(HoodieReaderConfig.MERGE_TYPE.key())
       .stringType()
-      .defaultValue(REALTIME_PAYLOAD_COMBINE)
-      .withDescription("For Snapshot query on merge on read table. Use this key to define how the payloads are merged, in\n"
-          + "1) skip_merge: read the base file records plus the log file records;\n"
-          + "2) payload_combine: read the base file records first, for each record in base file, checks whether the key is in the\n"
-          + "   log file records(combines the two records with same key for base and log file records), then read the left log file records");
+      .defaultValue(HoodieReaderConfig.MERGE_TYPE.defaultValue())
+      .withDescription(HoodieReaderConfig.MERGE_TYPE.doc());
 
   @AdvancedConfig
   public static final ConfigOption<Boolean> READ_UTC_TIMEZONE = ConfigOptions
@@ -362,6 +360,17 @@ public class FlinkOptions extends HoodieConfig {
           + "default no limit");
 
   @AdvancedConfig
+  public static final ConfigOption<Boolean> READ_CDC_FROM_CHANGELOG = ConfigOptions
+      .key("read.cdc.from.changelog")
+      .booleanType()
+      .defaultValue(true)
+      .withDescription("Whether to consume the delta changes only from the cdc changelog files.\n"
+          + "When CDC is enabled, i). for COW table, the changelog is generated on each file update;\n"
+          + "ii). for MOR table, the changelog is generated on compaction.\n"
+          + "By default, always read from the changelog file,\n"
+          + "once it is disabled, the reader would infer the changes based on the file slice dependencies.");
+
+  @AdvancedConfig
   public static final ConfigOption<Boolean> READ_DATA_SKIPPING_ENABLED = ConfigOptions
       .key("read.data.skipping.enabled")
       .booleanType()
@@ -387,6 +396,13 @@ public class FlinkOptions extends HoodieConfig {
       .stringType()
       .defaultValue(WriteOperationType.UPSERT.value())
       .withDescription("The write operation, that this write should do");
+
+  @AdvancedConfig
+  public static final ConfigOption<Integer> WRITE_TABLE_VERSION = ConfigOptions
+      .key(HoodieWriteConfig.WRITE_TABLE_VERSION.key())
+      .intType()
+      .defaultValue(HoodieWriteConfig.WRITE_TABLE_VERSION.defaultValue())
+      .withDescription("Table version produced by this writer.");
 
   /**
    * Flag to indicate whether to drop duplicates before insert/upsert.

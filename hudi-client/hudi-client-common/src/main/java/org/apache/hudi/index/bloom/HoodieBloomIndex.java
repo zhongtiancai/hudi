@@ -149,6 +149,7 @@ public class HoodieBloomIndex extends HoodieIndex<Object, Object> {
       }
       // fallback to loading column ranges from files
       if (isNullOrEmpty(fileInfoList)) {
+        LOG.warn("fallback to loading column ranges from files");
         fileInfoList = loadColumnRangesFromFiles(affectedPartitionPathList, context, hoodieTable);
       }
     } else {
@@ -238,8 +239,8 @@ public class HoodieBloomIndex extends HoodieIndex<Object, Object> {
           new BloomIndexFileInfo(
               partitionAndFileNameToFileId.get(entry.getKey()),
               // NOTE: Here we assume that the type of the primary key field is string
-              (String) unwrapAvroValueWrapper(entry.getValue().getMinValue()),
-              (String) unwrapAvroValueWrapper(entry.getValue().getMaxValue())
+              unwrapAvroValueWrapper(entry.getValue().getMinValue()).toString(),
+              unwrapAvroValueWrapper(entry.getValue().getMaxValue()).toString()
           )));
     }
 

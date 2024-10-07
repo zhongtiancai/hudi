@@ -27,6 +27,7 @@ import org.apache.hudi.common.fs.ConsistencyGuardConfig;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.table.HoodieTableVersion;
 import org.apache.hudi.common.table.TableSchemaResolver;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
@@ -36,6 +37,7 @@ import org.apache.hudi.common.util.Option;
 import org.apache.hudi.config.HoodieCompactionConfig;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.TableNotFoundException;
+import org.apache.hudi.storage.StoragePath;
 import org.apache.hudi.table.action.compact.strategy.UnBoundedCompactionStrategy;
 
 import org.apache.avro.Schema;
@@ -111,6 +113,16 @@ public class TableCommand {
     return "Metadata for table " + HoodieCLI.getTableMetaClient().getTableConfig().getTableName() + " loaded";
   }
 
+  public String createTable(
+      final String path,
+      final String name,
+      final String tableTypeStr,
+      String archiveFolder,
+      Integer layoutVersion,
+      final String payloadClass) throws IOException {
+    return createTable(path, name, tableTypeStr, archiveFolder, layoutVersion, HoodieTableVersion.current().versionCode(), payloadClass);
+  }
+
   /**
    * Create a Hoodie Table if it does not exist.
    *
@@ -129,6 +141,8 @@ public class TableCommand {
           defaultValue = ShellOption.NULL) String archiveFolder,
       @ShellOption(value = {"--layoutVersion"}, help = "Specific Layout Version to use",
           defaultValue = ShellOption.NULL) Integer layoutVersion,
+      @ShellOption(value = {"--tableVersion"}, help = "Specific table Version to create table as",
+          defaultValue = ShellOption.NULL) Integer tableVersion,
       @ShellOption(value = {"--payloadClass"}, defaultValue = "org.apache.hudi.common.model.HoodieAvroPayload",
           help = "Payload Class") final String payloadClass) throws IOException {
 
@@ -148,12 +162,13 @@ public class TableCommand {
       throw new IllegalStateException("Table already existing in path : " + path);
     }
 
-    HoodieTableMetaClient.withPropertyBuilder()
+    HoodieTableMetaClient.newTableBuilder()
         .setTableType(tableTypeStr)
         .setTableName(name)
         .setArchiveLogFolder(archiveFolder)
         .setPayloadClassName(payloadClass)
         .setTimelineLayoutVersion(layoutVersion)
+        .setTableVersion(tableVersion == null ? HoodieTableVersion.current().versionCode() : tableVersion)
         .initTable(HoodieCLI.conf.newInstance(), path);
     // Now connect to ensure loading works
     return connect(path, layoutVersion, false, 0, 0, 0,
@@ -269,7 +284,7 @@ public class TableCommand {
       throws Exception {
     HoodieTableMetaClient client = HoodieCLI.getTableMetaClient();
     String tableName = client.getTableConfig().getTableName();
-    String tablePath = client.getBasePathV2().toString();
+    StoragePath tablePath = client.getBasePath();
     Map<String, String> oldProps = client.getTableConfig().propsMap();
 
     HoodieTableType currentType = client.getTableType();

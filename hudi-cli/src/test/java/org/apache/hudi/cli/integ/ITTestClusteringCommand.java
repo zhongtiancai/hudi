@@ -28,6 +28,7 @@ import org.apache.hudi.client.common.HoodieSparkEngineContext;
 import org.apache.hudi.common.model.HoodieAvroPayload;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieTableType;
+import org.apache.hudi.common.table.HoodieTableVersion;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.versioning.TimelineLayoutVersion;
@@ -77,7 +78,8 @@ public class ITTestClusteringCommand extends HoodieCLIIntegrationTestBase {
     // Create table and connect
     new TableCommand().createTable(
         basePath, tableName, HoodieTableType.COPY_ON_WRITE.name(),
-        "", TimelineLayoutVersion.VERSION_1, "org.apache.hudi.common.model.HoodieAvroPayload");
+        "", TimelineLayoutVersion.VERSION_1, HoodieTableVersion.current().versionCode(),
+        "org.apache.hudi.common.model.HoodieAvroPayload");
 
     initMetaClient();
   }
@@ -98,7 +100,7 @@ public class ITTestClusteringCommand extends HoodieCLIIntegrationTestBase {
 
     // there is 1 requested clustering
     HoodieActiveTimeline timeline = HoodieCLI.getTableMetaClient().getActiveTimeline();
-    assertEquals(1, timeline.filterPendingReplaceTimeline().countInstants());
+    assertEquals(1, timeline.filterPendingClusteringTimeline().countInstants());
   }
 
   /**
@@ -115,7 +117,7 @@ public class ITTestClusteringCommand extends HoodieCLIIntegrationTestBase {
     // get clustering instance
     HoodieActiveTimeline timeline = HoodieCLI.getTableMetaClient().getActiveTimeline();
     Option<String> instanceOpt =
-        timeline.filterPendingReplaceTimeline().firstInstant().map(HoodieInstant::getTimestamp);
+        timeline.filterPendingClusteringTimeline().firstInstant().map(HoodieInstant::getTimestamp);
     assertTrue(instanceOpt.isPresent(), "Must have pending clustering.");
     final String instance = instanceOpt.get();
 

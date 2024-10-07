@@ -26,12 +26,15 @@ analytical datasets on DFS (Cloud stores, HDFS or any Hadoop FileSystem compatib
 <https://hudi.apache.org/>
 
 [![Build](https://github.com/apache/hudi/actions/workflows/bot.yml/badge.svg)](https://github.com/apache/hudi/actions/workflows/bot.yml)
-[![Test](https://dev.azure.com/apache-hudi-ci-org/apache-hudi-ci/_apis/build/status/apachehudi-ci.hudi-mirror?branchName=master)](https://dev.azure.com/apache-hudi-ci-org/apache-hudi-ci/_build/latest?definitionId=3&branchName=master)
+[![Test](https://dev.azure.com/apachehudi/hudi-oss-ci/_apis/build/status/apachehudi-ci.hudi-mirror?branchName=master)](https://dev.azure.com/apachehudi/hudi-oss-ci/_build/latest?definitionId=5&branchName=master)
 [![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.apache.hudi/hudi/badge.svg)](http://search.maven.org/#search%7Cga%7C1%7Cg%3A%22org.apache.hudi%22)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/m/apache/hudi)
-[![Join on Slack](https://img.shields.io/badge/slack-%23hudi-72eff8?logo=slack&color=48c628&label=Join%20on%20Slack)](https://join.slack.com/t/apache-hudi/shared_invite/zt-1e94d3xro-JvlNO1kSeIHJBTVfLPlI5w)
+[![Join on Slack](https://img.shields.io/badge/slack-%23hudi-72eff8?logo=slack&color=48c628&label=Join%20on%20Slack)](https://join.slack.com/t/apache-hudi/shared_invite/zt-2ggm1fub8-_yt4Reu9djwqqVRFC7X49g)
 [![Twitter Follow](https://img.shields.io/twitter/follow/ApacheHudi)](https://twitter.com/apachehudi)
+[![Follow Linkedin](https://img.shields.io/badge/apache%E2%80%93hudi-0077B5?style=for-the-badge&logo=linkedin&logoColor=white&label=Follow)](https://www.linkedin.com/company/apache-hudi/?viewAsMember=true)
+
+
 
 ## Features
 
@@ -91,17 +94,11 @@ Refer to the table below for building with different Spark and Scala versions.
 
 | Maven build options       | Expected Spark bundle jar name               | Notes                                            |
 |:--------------------------|:---------------------------------------------|:-------------------------------------------------|
-| (empty)                   | hudi-spark3.2-bundle_2.12                    | For Spark 3.2.x and Scala 2.12 (default options) |
-| `-Dspark2.4 -Dscala-2.11` | hudi-spark2.4-bundle_2.11                    | For Spark 2.4.4 and Scala 2.11                   |
-| `-Dspark3.0`              | hudi-spark3.0-bundle_2.12                    | For Spark 3.0.x and Scala 2.12                   |
-| `-Dspark3.1`              | hudi-spark3.1-bundle_2.12                    | For Spark 3.1.x and Scala 2.12                   |
-| `-Dspark3.2`              | hudi-spark3.2-bundle_2.12                    | For Spark 3.2.x and Scala 2.12 (same as default) |
+| (empty)                   | hudi-spark3.5-bundle_2.12                    | For Spark 3.5.x and Scala 2.12 (default options) |
 | `-Dspark3.3`              | hudi-spark3.3-bundle_2.12                    | For Spark 3.3.x and Scala 2.12                   |
 | `-Dspark3.4`              | hudi-spark3.4-bundle_2.12                    | For Spark 3.4.x and Scala 2.12                   |
-| `-Dspark3.5 -Dscala-2.12` | hudi-spark3.5-bundle_2.12                    | For Spark 3.5.x and Scala 2.12                   |
+| `-Dspark3.5 -Dscala-2.12` | hudi-spark3.5-bundle_2.12                    | For Spark 3.5.x and Scala 2.12 (same as default) |
 | `-Dspark3.5 -Dscala-2.13` | hudi-spark3.5-bundle_2.13                    | For Spark 3.5.x and Scala 2.13                   |
-| `-Dspark2 -Dscala-2.11`   | hudi-spark-bundle_2.11 (legacy bundle name)  | For Spark 2.4.4 and Scala 2.11                   |
-| `-Dspark2 -Dscala-2.12`   | hudi-spark-bundle_2.12 (legacy bundle name)  | For Spark 2.4.4 and Scala 2.12                   |
 | `-Dspark3`                | hudi-spark3-bundle_2.12 (legacy bundle name) | For Spark 3.5.x and Scala 2.12                   |
 
 Please note that only Spark-related bundles, i.e., `hudi-spark-bundle`, `hudi-utilities-bundle`,
@@ -115,14 +112,11 @@ mvn clean package -DskipTests -Dspark3.5 -Dscala-2.13 -pl packaging/hudi-spark-b
 
 For example,
 ```
-# Build against Spark 3.2.x
+# Build against Spark 3.5.x
 mvn clean package -DskipTests
 
 # Build against Spark 3.4.x
 mvn clean package -DskipTests -Dspark3.4
-
-# Build against Spark 2.4.4 and Scala 2.11
-mvn clean package -DskipTests -Dspark2.4 -Dscala-2.11
 ```
 
 #### What about "spark-avro" module?
@@ -135,23 +129,19 @@ The default Flink version supported is 1.18. The default Flink 1.18.x version, c
 Flink is Scala-free since 1.15.x, there is no need to specify the Scala version for Flink 1.15.x and above versions.
 Refer to the table below for building with different Flink and Scala versions.
 
-| Maven build options        | Expected Flink bundle jar name | Notes                            |
-|:---------------------------|:-------------------------------|:---------------------------------|
-| (empty)                    | hudi-flink1.18-bundle          | For Flink 1.18 (default options) |
-| `-Dflink1.18`              | hudi-flink1.18-bundle          | For Flink 1.18 (same as default) |
-| `-Dflink1.17`              | hudi-flink1.17-bundle          | For Flink 1.17                   |
-| `-Dflink1.16`              | hudi-flink1.16-bundle          | For Flink 1.16                   |
-| `-Dflink1.15`              | hudi-flink1.15-bundle          | For Flink 1.15                   |
-| `-Dflink1.14`              | hudi-flink1.14-bundle          | For Flink 1.14 and Scala 2.12    |
-| `-Dflink1.14 -Dscala-2.11` | hudi-flink1.14-bundle          | For Flink 1.14 and Scala 2.11    |
+| Maven build options | Expected Flink bundle jar name | Notes                            |
+|:--------------------|:-------------------------------|:---------------------------------|
+| (empty)             | hudi-flink1.18-bundle          | For Flink 1.18 (default options) |
+| `-Dflink1.18`       | hudi-flink1.18-bundle          | For Flink 1.18 (same as default) |
+| `-Dflink1.17`       | hudi-flink1.17-bundle          | For Flink 1.17                   |
+| `-Dflink1.16`       | hudi-flink1.16-bundle          | For Flink 1.16                   |
+| `-Dflink1.15`       | hudi-flink1.15-bundle          | For Flink 1.15                   |
+| `-Dflink1.14`       | hudi-flink1.14-bundle          | For Flink 1.14                   |
 
 For example,
 ```
 # Build against Flink 1.15.x
 mvn clean package -DskipTests -Dflink1.15
-
-# Build against Flink 1.14.x and Scala 2.11
-mvn clean package -DskipTests -Dflink1.14 -Dscala-2.11
 ```
 
 ## Running Tests

@@ -63,7 +63,7 @@ class ColumnStatsIndexSupport(spark: SparkSession,
 
   // NOTE: Since [[metadataConfig]] is transient this has to be eagerly persisted, before this will be passed
   //       on to the executor
-  private val inMemoryProjectionThreshold = metadataConfig.getColumnStatsIndexInMemoryProjectionThreshold
+  protected val inMemoryProjectionThreshold = metadataConfig.getColumnStatsIndexInMemoryProjectionThreshold
 
   private lazy val indexedColumns: Set[String] = {
     val customIndexedColumns = metadataConfig.getColumnsEnabledForColumnStatsIndex
@@ -86,12 +86,6 @@ class ColumnStatsIndexSupport(spark: SparkSession,
                                          shouldPushDownFilesFilter: Boolean
                                         ): Option[Set[String]] = {
     if (isIndexAvailable && queryFilters.nonEmpty && queryReferencedColumns.nonEmpty) {
-      // NOTE: Since executing on-cluster via Spark API has its own non-trivial amount of overhead,
-      //       it's most often preferential to fetch Column Stats Index w/in the same process (usually driver),
-      //       w/o resorting to on-cluster execution.
-      //       For that we use a simple-heuristic to determine whether we should read and process CSI in-memory or
-      //       on-cluster: total number of rows of the expected projected portion of the index has to be below the
-      //       threshold (of 100k records)
       val readInMemory = shouldReadInMemory(fileIndex, queryReferencedColumns, inMemoryProjectionThreshold)
       val prunedFileNames = getPrunedFileNames(prunedPartitionsAndFileSlices)
       // NOTE: If partition pruning doesn't prune any files, then there's no need to apply file filters
@@ -248,7 +242,7 @@ class ColumnStatsIndexSupport(spark: SparkSession,
     // penalty of the [[Dataset]], since it's required to adhere to its schema at all times, while
     // RDDs are not;
     val transposedRows: HoodieData[Row] = colStatsRecords
-      // NOTE: Explicit conversion is required for Scala 2.11
+      //TODO: [HUDI-8303] Explicit conversion might not be required for Scala 2.12+
       .filter(JFunction.toJavaSerializableFunction(r => sortedTargetColumnsSet.contains(r.getColumnName)))
       .mapToPair(JFunction.toJavaSerializablePairFunction(r => {
         if (r.getMinValue == null && r.getMaxValue == null) {
@@ -318,7 +312,7 @@ class ColumnStatsIndexSupport(spark: SparkSession,
   private def loadColumnStatsIndexForColumnsInternal(targetColumns: Seq[String], shouldReadInMemory: Boolean): DataFrame = {
     val colStatsDF = {
       val colStatsRecords: HoodieData[HoodieMetadataColumnStats] = loadColumnStatsIndexRecords(targetColumns, shouldReadInMemory)
-      // NOTE: Explicit conversion is required for Scala 2.11
+      //TODO: [HUDI-8303] Explicit conversion might not be required for Scala 2.12+
       val catalystRows: HoodieData[InternalRow] = colStatsRecords.mapPartitions(JFunction.toJavaSerializableFunction(it => {
         val converter = AvroConversionUtils.createAvroToInternalRowConverter(HoodieMetadataColumnStats.SCHEMA$, columnStatsRecordStructType)
         it.asScala.map(r => converter(r).orNull).asJava
@@ -352,19 +346,19 @@ class ColumnStatsIndexSupport(spark: SparkSession,
       metadataTable.getRecordsByKeyPrefixes(encodedTargetColumnNames.asJava, HoodieTableMetadataUtil.PARTITION_NAME_COLUMN_STATS, shouldReadInMemory)
 
     val columnStatsRecords: HoodieData[HoodieMetadataColumnStats] =
-      // NOTE: Explicit conversion is required for Scala 2.11
+      //TODO: [HUDI-8303] Explicit conversion might not be required for Scala 2.12+
       metadataRecords.map(JFunction.toJavaSerializableFunction(record => {
-        toScalaOption(record.getData.getInsertValue(null, null))
-          .map(metadataRecord => metadataRecord.asInstanceOf[HoodieMetadataRecord].getColumnStatsMetadata)
-          .orNull
-      }))
+          toScalaOption(record.getData.getInsertValue(null, null))
+            .map(metadataRecord => metadataRecord.asInstanceOf[HoodieMetadataRecord].getColumnStatsMetadata)
+            .orNull
+        }))
         .filter(JFunction.toJavaSerializableFunction(columnStatsRecord => columnStatsRecord != null))
 
     columnStatsRecords
   }
 
   private def loadFullColumnStatsIndexInternal(): DataFrame = {
-    val metadataTablePath = HoodieTableMetadata.getMetadataTableBasePath(metaClient.getBasePathV2.toString)
+    val metadataTablePath = HoodieTableMetadata.getMetadataTableBasePath(metaClient.getBasePath)
     // Read Metadata Table's Column Stats Index into Spark's [[DataFrame]]
     val colStatsDF = spark.read.format("org.apache.hudi")
       .options(metadataConfig.getProps.asScala)
